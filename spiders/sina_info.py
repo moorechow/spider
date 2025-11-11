@@ -13,6 +13,7 @@ from scrapy.exceptions import CloseSpider
 from urllib.parse import urlencode
 from sina_news.items import SinaNewsItem
 import time
+import datetime
 import json
 import re
 
@@ -25,13 +26,13 @@ class SinaInfoSpider(scrapy.Spider):
         # '体育新闻': 1002,
         # '科技新闻': 1003
     }
-    def __init__(self):
-        super().__init__()
+    def __init__(self, *args, **kwargs):
+        super(SinaInfoSpider, self).__init__(*args, **kwargs)
         self.max_page = 100
         self.news_num = 20
         # 爬取页数范围,暂定1-5页
-        self.start_page = 124
-        self.end_page = 200
+        self.start_page = 1
+        self.end_page = 2
         # 添加连续空数据计数器
         self.empty_data_count = 0
         self.empty_count = 3
@@ -62,28 +63,28 @@ class SinaInfoSpider(scrapy.Spider):
             url = f"https://feed.sina.com.cn/api/roll/get?{urlencode(params)}"
 
             yield scrapy.Request(
-                            url=url,
-                            callback=self.parse_section,
-                            meta={'page': page},
-                            headers={
-                                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                                'Referer': 'https://news.sina.com.cn/',
-                                'Accept': 'application/json, text/javascript, */*; q=0.01',
-                            },
-                            dont_filter=True
-                            #priority=priority
+                url=url,
+                callback=self.parse_section,
+                meta={'page': page},
+                headers={
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                    'Referer': 'https://news.sina.com.cn/',
+                    'Accept': 'application/json, text/javascript, */*; q=0.01',
+                },
+                dont_filter=True
+                #priority=priority
             )
 
     def parse_section(self, response: HtmlResponse):
         """解析API的响应信息"""
         page = response.meta['page']
-        print(f"正在爬取第 {page} 页")
+        self.logger.info(f"正在爬取第 {page} 页")
 
         # 处理JSONP响应
         json_data = self.parse_jsonp_response(response.text)
         # print("json数据:", json_data)
         if not json_data:
-            print(f"爬取第 {page} 页失败")
+            self.logger.warning(f"爬取第 {page} 页失败")
             # 如果解析JSON失败，也视为空数据
             self.empty_data_count += 1
             if self.empty_data_count >= self.empty_count:
@@ -112,30 +113,23 @@ class SinaInfoSpider(scrapy.Spider):
     def parse_jsonp_response(self, text):
         """解析JSONP响应为JSON"""
         try:
-            # print(f"原始响应长度: {len(text)}")
-            # print(f"响应前300字符: {text[:300]}")
-
             # 方法1: 精确匹配JSONP回调函数，包含完整的JSON对象
             json_match = re.search(r'feedCardJsonpCallback\s*\(\s*(\{.*\})\s*\);?', text, re.DOTALL)
             if json_match:
                 json_str = json_match.group(1)
-                # print(f"方法1匹配成功，JSON长度: {len(json_str)}")
-                # print(f"JSON前200字符: {json_str[:200]}")
-
                 # 清理可能的JavaScript注释或其他非JSON字符
                 json_str = self.clean_json_string(json_str)
 
                 try:
                     return json.loads(json_str)
                 except json.JSONDecodeError as e:
-                    print(f"JSON解析错误: {e}")
-                    print(f"错误位置: {e.pos}")
-                    print(f"错误行: {json_str[max(0, e.pos-50):e.pos+50]}")
+                    self.logger.error(f"JSON解析错误: {e}")
+                    self.logger.error(f"错误位置: {e.pos}")
+                    self.logger.error(f"错误行: {json_str[max(0, e.pos-50):e.pos+50]}")
                     return None
 
             print("JSONP模式匹配失败")
             return None
-
         except Exception as e:
             print(f"JSON解析失败: {e}")
             import traceback
@@ -147,22 +141,13 @@ class SinaInfoSpider(scrapy.Spider):
         # 移除可能的JavaScript注释
         json_str = re.sub(r'//.*?\n', '', json_str)
         json_str = re.sub(r'/\*.*?\*/', '', json_str, flags=re.DOTALL)
-
         # 处理可能的尾随逗号
         json_str = re.sub(r',\s*}(?=,|\s|$)', '}', json_str)
         json_str = re.sub(r',\s*\](?=,|\s|$)', ']', json_str)
-
         # 处理可能的控制字符
         json_str = ''.join(char for char in json_str if ord(char) >= 32 or char in '\n\r\t')
 
         return json_str.strip()
-
-            # 上面如果匹配不成功
-            # json_match1 = re.search(r'\w+\s*\(\s*(\{.*\})\s*\)', text, re.DOTALL)
-            # if json_match1:
-            #     json_str = json_match1.group(1)
-            #     print(f"方法2匹配成功，JSON长度: {len(json_str)}")
-            #     return json.loads(json_str)
 
     def extract_news_data(self, data):
         """从API响应中提取新闻列表"""
@@ -194,9 +179,11 @@ class SinaInfoSpider(scrapy.Spider):
             item['wapurl'] = news_data.get('wapurl', '')
 
             # 时间信息
-            item['publish_time'] = news_data.get('mtime')
-            item['ctime'] = news_data.get('ctime')
-            item['mtime'] = news_data.get('mtime')
+            mtime = news_data.get('mtime').strip()
+            ctime = news_data.get('ctime').strip()
+            item['publish_time'] = datetime.datetime.fromtimestamp(int(mtime)).strftime("%Y-%m-%d %H:%M:%S")
+            item['ctime'] = datetime.datetime.fromtimestamp(int(ctime)).strftime("%Y-%m-%d %H:%M:%S")
+            item['mtime'] = datetime.datetime.fromtimestamp(int(mtime)).strftime("%Y-%m-%d %H:%M:%S")
 
             # 内容信息
             item['summary'] = news_data.get('summary', '')

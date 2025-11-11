@@ -61,9 +61,10 @@ DEFAULT_REQUEST_HEADERS = {
 
 # Configure item pipelines
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
-#ITEM_PIPELINES = {
-#    "sina_news.pipelines.SinaNewsPipeline": 300,
-#}
+ITEM_PIPELINES = {
+   "sina_news.pipelines.RedisURLStoragePipeline": 300,
+   "sina_news.pipelines.MangoDBPipeline": 301,
+}
 
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See https://docs.scrapy.org/en/latest/topics/autothrottle.html
@@ -92,7 +93,7 @@ FEED_EXPORT_ENCODING = "utf-8"
 # 日志设置
 LOG_ENABLED = True
 # LOG_ENCODING = 'utf-8'
-LOG_LEVEL = 'DEBUG'           # 日志级别：DEBUG, INFO, WARNING, ERROR, CRITICAL
+LOG_LEVEL = 'WARNING'           # 日志级别：DEBUG, INFO, WARNING, ERROR, CRITICAL
 # LOG_FORMAT = '%(asctime)s [%(name)s] %(levelname)s: %(message)s'
 # LOG_DATEFORMAT = '%Y-%m-%d %H:%M:%S'
 # LOG_STDOUT = False
@@ -106,3 +107,24 @@ LOG_LEVEL = 'DEBUG'           # 日志级别：DEBUG, INFO, WARNING, ERROR, CRIT
 # SCHEDULER_QUEUE_CLASS = "scrapy_redis.queue.PriorityQueue" # 优先级队列，使用有序集合来存储
 # SCHEDULER_QUEUE_CLASS = "scrapy_redis.queue.FifoQueue"  # 先进先出
 # SCHEDULER_QUEUE_CLASS = "scrapy_redis.queue.LifoQueue"  # 后进先出
+
+
+# MongoDB配置
+MONGO_URI = 'mongodb://localhost:27017'  # MongoDB连接字符串
+MONGO_DATABASE = 'sina_news'            # 数据库名称
+MONGO_COLLECTION = 'news'               # 集合名称
+
+# redis配置
+REDIS_HOST = 'localhost'  # Redis服务器地址
+REDIS_PORT = 6379         # Redis端口
+REDIS_PASSWORD = None      # Redis密码（如果没有则为None）
+REDIS_DB = 0              # Redis数据库编号
+
+# 去重队列名称
+REDIS_URLS_KEY = 'sina:news:urls'          # 待爬取URL队列
+REDIS_DUPE_KEY = 'sina:news:dupefilter'    # 去重集合
+
+# 启用Redis相关组件
+DUPEFILTER_CLASS = "scrapy_redis.dupefilter.RFPDupeFilter"
+SCHEDULER = "scrapy_redis.scheduler.Scheduler"
+SCHEDULER_PERSIST = True  # 是否持久化调度队列
